@@ -5,8 +5,8 @@ import Social from "./common/social";
 import useDarkMode from "@/hooks/useDarkMode";
 
 // image import
-import LogoWhite from "@/assets/images/logo/logo-white.svg";
-import Logo from "@/assets/images/logo/logo.svg";
+import LogoWhite from "@/assets/images/logo/logo-transparent-svg.svg";
+import Logo from "@/assets/images/logo/logo-transparent-svg.svg";
 import Illustration from "@/assets/images/auth/ils1.svg";
 
 const Login = () => {
@@ -29,14 +29,14 @@ const Login = () => {
     <div className="loginwrapper">
       <div className="lg-inner-column">
         <div className="left-column relative z-[1]">
-          <div className="max-w-[520px] pt-20 ltr:pl-20 rtl:pr-20">
+          <div className="max-w-[520px] pt-20  rtl:pr-20 text-left">
             <Link to="/">
-              <img src={isDark ? LogoWhite : Logo} alt="" className="mb-10" />
+              <img src={isDark ? LogoWhite : Logo} alt="" className="mb-5" />
             </Link>
-            <h4>
+            <h4 className="pl-[100px]">
               Unlock your Project
-              <span className="text-slate-800 dark:text-slate-400 font-bold">
-                performance
+              <span className="text-slate-800 dark:text-slate-400 font-bold ml-3">
+                Performance
               </span>
             </h4>
           </div>
