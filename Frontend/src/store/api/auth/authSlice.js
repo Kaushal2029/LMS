@@ -2,6 +2,8 @@ import { createSlice } from "@reduxjs/toolkit";
 import { v4 as uuidv4 } from "uuid";
 
 const storedUser = JSON.parse(localStorage.getItem("user"));
+// When storing user data during login
+console.log("storedUser", storedUser);
 
 export const authSlice = createSlice({
   name: "auth",

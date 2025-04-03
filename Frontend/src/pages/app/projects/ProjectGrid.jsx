@@ -1,33 +1,30 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import Card from "@/components/ui/Card";
 import Dropdown from "@/components/ui/Dropdown";
-// import menu form headless ui
 import { Menu } from "@headlessui/react";
 import Icon from "@/components/ui/Icon";
-import ProgressBar from "@/components/ui/ProgressBar";
-import { removeProject, updateProject } from "./store";
-import { useDispatch, useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
+import axios from "axios";
 
-const ProjectGrid = ({ project }) => {
-  const { name, progress, status, members, assignee, des, startDate, endDate } =
-    project;
-  const dispatch = useDispatch();
-
-  const [start, setStart] = useState(new Date(startDate));
-  const [end, setEnd] = useState(new Date(endDate));
-  const [totaldays, setTotaldays] = useState(0);
-
-  useEffect(() => {
-    const diffTime = Math.abs(end - start);
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    setTotaldays(diffDays);
-  }, [start, end]);
+const ProjectGrid = ({ book = {} }) => {
+  // Provide default values for all properties
+  const {
+    name = "Untitled Book",
+    authorName = "Unknown Author",
+    description = "No description available",
+    publishedYear = "N/A",
+    genre = "Uncategorized",
+    price = 0,
+    stock = 0,
+  } = book;
 
   const navigate = useNavigate();
-  // handleClick to view project single page
-  const handleClick = (project) => {
-    navigate(`/projects/${project.id}`);
+
+  // handleClick to view book details
+  const handleClick = (book) => {
+    if (book && book.id) {
+      navigate(`/projects/${book.id}`);
+    }
   };
 
   return (
@@ -56,7 +53,7 @@ const ProjectGrid = ({ project }) => {
             }
           >
             <div>
-              <Menu.Item onClick={() => handleClick(project)}>
+              <Menu.Item onClick={() => handleClick(book)}>
                 <div
                   className="hover:bg-slate-900 dark:hover:bg-slate-600 dark:hover:bg-opacity-70 hover:text-white
                    w-full border-b border-b-gray-500 border-opacity-10   px-4 py-2 text-sm dark:text-slate-300  last:mb-0 cursor-pointer first:rounded-t last:rounded-b flex  space-x-2 items-center
@@ -68,92 +65,54 @@ const ProjectGrid = ({ project }) => {
                   <span>View</span>
                 </div>
               </Menu.Item>
-              <Menu.Item onClick={() => dispatch(updateProject(project))}>
+              <Menu.Item>
                 <div
                   className="hover:bg-slate-900 dark:hover:bg-slate-600 dark:hover:bg-opacity-70 hover:text-white
                    w-full border-b border-b-gray-500 border-opacity-10   px-4 py-2 text-sm dark:text-slate-300  last:mb-0 cursor-pointer first:rounded-t last:rounded-b flex  space-x-2 items-center
                      capitalize rtl:space-x-reverse"
                 >
                   <span className="text-base">
-                    <Icon icon="heroicons-outline:pencil-alt" />
+                    <Icon icon="heroicons-outline:shopping-cart" />
                   </span>
-                  <span>Edit</span>
-                </div>
-              </Menu.Item>
-              <Menu.Item onClick={() => dispatch(removeProject(project.id))}>
-                <div
-                  className="hover:bg-slate-900 dark:hover:bg-slate-600 dark:hover:bg-opacity-70 hover:text-white
-                   w-full border-b border-b-gray-500 border-opacity-10   px-4 py-2 text-sm dark:text-slate-300  last:mb-0 cursor-pointer first:rounded-t last:rounded-b flex  space-x-2 items-center
-                     capitalize rtl:space-x-reverse"
-                >
-                  <span className="text-base">
-                    <Icon icon="heroicons-outline:trash" />
-                  </span>
-                  <span>Delete</span>
+                  <span>Add to Cart</span>
                 </div>
               </Menu.Item>
             </div>
           </Dropdown>
         </div>
       </header>
-      {/* description */}
-      <div className="text-slate-600 dark:text-slate-400 text-sm pt-4 pb-8">
-        {des}
-      </div>
-      {/* assignee */}
-      <div className="flex space-x-4 rtl:space-x-reverse">
-        {/* start date */}
-        <div>
-          <span className="block date-label">Start date</span>
-          <span className="block date-text">{startDate}</span>
-        </div>
-        {/* end date */}
-        <div>
-          <span className="block date-label">Start date</span>
-          <span className="block date-text">{endDate}</span>
-        </div>
-      </div>
-      {/* progress bar */}
-      <div className="ltr:text-right rtl:text-left text-xs text-slate-600 dark:text-slate-300 mb-1 font-medium">
-        {progress}%
-      </div>
-      <ProgressBar value={progress} className="bg-primary-500" />
-      {/* assignee and total date */}
-      <div className="grid grid-cols-2 gap-4 mt-6">
-        {/* assignee */}
-        <div>
-          <div className="text-slate-400 dark:text-slate-400 text-sm font-normal mb-3">
-            Assigned to
-          </div>
-          <div className="flex justify-start -space-x-1.5 rtl:space-x-reverse">
-            {assignee?.map((user, userIndex) => (
-              <div
-                className="h-6 w-6 rounded-full ring-1 ring-slate-100"
-                key={userIndex}
-              >
-                <img
-                  src={user.image}
-                  alt={user.label}
-                  className="w-full h-full rounded-full"
-                />
-              </div>
-            ))}
-            <div className="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-300 text-xs ring-2 ring-slate-100 dark:ring-slate-700 rounded-full h-6 w-6 flex flex-col justify-center items-center">
-              +2
-            </div>
-          </div>
+
+      {/* book details */}
+      <div className="space-y-4 mt-4">
+        {/* author */}
+        <div className="flex items-center space-x-2 rtl:space-x-reverse">
+          <span className="text-slate-500 dark:text-slate-400">By</span>
+          <span className="text-slate-900 dark:text-slate-300 font-medium">
+            {authorName}
+          </span>
         </div>
 
-        {/* total date */}
-        <div className="ltr:text-right rtl:text-left">
-          <span className="inline-flex items-center space-x-1 bg-danger-500 bg-opacity-[0.16] text-danger-500 text-xs font-normal px-2 py-1 rounded-full rtl:space-x-reverse">
-            <span>
-              {" "}
-              <Icon icon="heroicons-outline:clock" />
-            </span>
-            <span>{totaldays}</span>
-            <span>days left</span>
+        {/* description */}
+        <div className="text-slate-600 dark:text-slate-400 text-sm line-clamp-3">
+          {description}
+        </div>
+
+        {/* price and stock */}
+        <div className="flex justify-between items-center">
+          <span className="text-lg font-medium text-primary-500">${price}</span>
+          <span className="text-sm text-slate-500 dark:text-slate-400">
+            Stock: {stock}
           </span>
+        </div>
+
+        {/* genre and year */}
+        <div className="flex flex-wrap gap-2">
+          <div className="bg-slate-100 dark:bg-slate-700 rounded-full px-3 py-1 text-xs">
+            {genre}
+          </div>
+          <div className="bg-slate-100 dark:bg-slate-700 rounded-full px-3 py-1 text-xs">
+            {publishedYear}
+          </div>
         </div>
       </div>
     </Card>

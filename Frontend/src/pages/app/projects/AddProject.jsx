@@ -10,6 +10,8 @@ import { useForm, Controller } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import * as yup from "yup";
 import { v4 as uuidv4 } from "uuid";
+import axios from "axios";
+import { toast } from "react-toastify";
 
 import avatar1 from "@/assets/images/avatar/av-1.svg";
 import avatar2 from "@/assets/images/avatar/av-2.svg";
@@ -93,23 +95,18 @@ const AddProject = () => {
 
   const FormValidationSchema = yup
     .object({
-      title: yup.string().required("Title is required"),
-      assign: yup.mixed().required("Assignee is required"),
-      tags: yup.mixed().required("Tag is required"),
-      startDate: yup
-        .date()
-        .required("Start date is required")
-        .min(new Date(), "Start date must be greater than today"),
-      endDate: yup
-        .date()
-        .required("End date is required")
-        .min(new Date(), "End date must be greater than today"),
+      name: yup.string().required("Book name is required"),
+      authorName: yup.string().required("Author name is required"),
+      description: yup.string().required("Description is required"),
+      publishedYear: yup.number().required("Published year is required"),
+      genre: yup.string().required("Genre is required"),
+      price: yup.number().required("Price is required"),
+      stock: yup.number().required("Stock is required"),
     })
     .required();
 
   const {
     register,
-    control,
     reset,
     formState: { errors },
     handleSubmit,
@@ -118,154 +115,125 @@ const AddProject = () => {
     mode: "all",
   });
 
-  const onSubmit = (data) => {
-    const project = {
-      id: uuidv4(),
-      name: data.title,
-      assignee: data.assign,
-      // get only data value from startDate and endDate
-      category: null,
-      startDate: startDate.toISOString().split("T")[0],
-      endDate: endDate.toISOString().split("T")[0],
-      des: "Amet minim mollit non deserunt ullamco est sit aliqua dolor do amet sint.",
-      progress: Math.floor(Math.random() * (100 - 10 + 1) + 10),
-    };
-
-    dispatch(pushProject(project));
-    dispatch(toggleAddModal(false));
-    reset();
+  const onSubmit = async (data) => {
+    try {
+      const authToken = localStorage.getItem("authToken"); // Get token from localStorage
+      const response = await axios.post(
+        "http://localhost:8000/api/admin/books",
+        data,
+        {
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      if (response.data) {
+        dispatch(pushProject(response.data));
+        dispatch(toggleAddModal(false));
+        reset();
+        toast.success("Book added successfully!");
+      }
+    } catch (error) {
+      toast.error("Failed to add book. Please try again.");
+      console.error("Error adding book:", error);
+    }
   };
 
   return (
     <div>
       <Modal
-        title="Create Project"
+        title="Add New Book"
         labelclassName="btn-outline-dark"
         activeModal={openProjectModal}
         onClose={() => dispatch(toggleAddModal(false))}
+        // className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm"
       >
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 ">
-          <Textinput
-            name="title"
-            label="Project Name"
-            placeholder="Project Name"
-            register={register}
-            error={errors.title}
-          />
-          <div className="grid lg:grid-cols-2 gap-4 grid-cols-1">
-            <FormGroup
-              label="Start Date"
-              id="default-picker"
-              error={errors.startDate}
-            >
-              <Controller
-                name="startDate"
-                control={control}
-                render={({ field }) => (
-                  <Flatpickr
-                    className="form-control py-2"
-                    id="default-picker"
-                    placeholder="yyyy, dd M"
-                    value={startDate}
-                    onChange={(date) => {
-                      field.onChange(date);
-                    }}
-                    options={{
-                      altInput: true,
-                      altFormat: "F j, Y",
-                      dateFormat: "Y-m-d",
-                    }}
-                  />
-                )}
-              />
-            </FormGroup>
-            <FormGroup
-              label="End Date"
-              id="default-picker2"
-              error={errors.endDate}
-            >
-              <Controller
-                name="endDate"
-                control={control}
-                render={({ field }) => (
-                  <Flatpickr
-                    className="form-control py-2"
-                    id="default-picker2"
-                    placeholder="yyyy, dd M"
-                    value={endDate}
-                    onChange={(date) => {
-                      field.onChange(date);
-                    }}
-                    options={{
-                      altInput: true,
-                      altFormat: "F j, Y",
-                      dateFormat: "Y-m-d",
-                    }}
-                  />
-                )}
-              />
-            </FormGroup>
-          </div>
-          <div className={errors.assign ? "has-error" : ""}>
-            <label className="form-label" htmlFor="icon_s">
-              Assignee
-            </label>
-            <Controller
-              name="assign"
-              control={control}
-              render={({ field }) => (
-                <Select
-                  {...field}
-                  options={assigneeOptions}
-                  styles={styles}
-                  className="react-select"
-                  classNamePrefix="select"
-                  isMulti
-                  components={{
-                    Option: OptionComponent,
-                  }}
-                  id="icon_s"
-                />
-              )}
-            />
-            {errors.assign && (
-              <div className=" mt-2  text-danger-500 block text-sm">
-                {errors.assign?.message || errors.assign?.label.message}
-              </div>
-            )}
-          </div>
+        <div className="relative bg-white w-full max-w-[950px] p-6 rounded-2xl shadow-2xl transform transition-all scale-100">
+          {/* <button
+            onClick={() => dispatch(toggleAddModal(false))}
+            className="absolute top-4 right-4 bg-gray-200 hover:bg-gray-300 rounded-full w-8 h-8 flex items-center justify-center text-gray-600 shadow-md transition-all"
+          >
+            ✖
+          </button> */}
 
-          <div className={errors.tags ? "has-error" : ""}>
-            <label className="form-label" htmlFor="icon_s">
-              Tag
-            </label>
-            <Controller
-              name="tags"
-              control={control}
-              render={({ field }) => (
-                <Select
-                  {...field}
-                  options={options}
-                  styles={styles}
-                  className="react-select"
-                  classNamePrefix="select"
-                  isMulti
-                  id="icon_s"
-                />
-              )}
-            />
-            {errors.assign && (
-              <div className=" mt-2  text-danger-500 block text-sm">
-                {errors.tags?.message || errors.tags?.label.message}
-              </div>
-            )}
-          </div>
-          <Textarea label="Description" placeholder="Description" />
+          <h2 className="text-2xl font-bold text-center text-gray-800 mb-6">
+            📚 Add New Book
+          </h2>
 
-          <div className="ltr:text-right rtl:text-left">
-            <button className="btn btn-dark  text-center">Add</button>
-          </div>
-        </form>
+          {/* Form Layout - Two Columns */}
+          <form
+            onSubmit={handleSubmit(onSubmit)}
+            className="grid grid-cols-2 gap-10"
+          >
+            {/* Left Side */}
+            <div className="space-y-5">
+              <Textinput
+                name="name"
+                label="📖 Book Name"
+                placeholder="Enter book name"
+                register={register}
+                error={errors.name}
+              />
+              <Textinput
+                name="authorName"
+                label="✍️ Author Name"
+                placeholder="Enter author name"
+                register={register}
+                error={errors.authorName}
+              />
+              <Textinput
+                name="publishedYear"
+                label="📅 Published Year"
+                placeholder="Enter year"
+                type="number"
+                register={register}
+                error={errors.publishedYear}
+              />
+              <Textinput
+                name="price"
+                label="💰 Price"
+                placeholder="Enter price"
+                type="number"
+                register={register}
+                error={errors.price}
+              />
+            </div>
+
+            {/* Right Side */}
+            <div className="space-y-5">
+              <Textarea
+                name="description"
+                label="📝 Description"
+                placeholder="Enter book description"
+                register={register}
+                error={errors.description}
+              />
+              <Textinput
+                name="genre"
+                label="🎭 Genre"
+                placeholder="Enter genre"
+                register={register}
+                error={errors.genre}
+              />
+              <Textinput
+                name="stock"
+                label="📦 Stock"
+                placeholder="Enter stock quantity"
+                type="number"
+                register={register}
+                error={errors.stock}
+              />
+            </div>
+
+            {/* Submit Button - Full Width */}
+            <div className="col-span-2 text-center">
+              <button className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:scale-105 transition-transform duration-200">
+                🚀 Add Book
+              </button>
+            </div>
+          </form>
+        </div>
       </Modal>
     </div>
   );

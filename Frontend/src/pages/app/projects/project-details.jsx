@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import Card from "@/components/ui/Card";
 import Icon from "@/components/ui/Icon";
@@ -11,11 +11,69 @@ import MessageList from "@/components/partials/widget/message-list";
 import TrackingParcel from "@/components/partials/widget/activity";
 import TeamTable from "@/components/partials/Table/team-table";
 import CalendarView from "@/components/partials/widget/CalendarView";
+import axios from "axios";
+import { ToastContainer } from "react-toastify";
+
 const ProjectDetailsPage = () => {
   const { id } = useParams();
+  const [books, setBooks] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchBooks = async () => {
+      try {
+        const authToken = localStorage.getItem("authToken");
+        console.log("Auth Token:", authToken); // Log the auth token
+
+        const response = await axios.get(
+          "http://localhost:8000/api/admin/books",
+          {
+            headers: {
+              Authorization: `Bearer ${authToken}`,
+              "Content-Type": "application/json",
+            },
+          }
+        );
+
+        console.log("Full Response:", response); // Log the full response
+        console.log("Response Data:", response.data); // Log the response data
+
+        // Handle the response structure where books are under a 'books' property
+        if (response.data && response.data.books) {
+          setBooks(response.data.books);
+        } else if (Array.isArray(response.data)) {
+          setBooks(response.data);
+        } else {
+          console.error("Unexpected response structure:", response.data);
+          setBooks([]);
+        }
+
+        setLoading(false);
+      } catch (error) {
+        console.error("Error details:", {
+          message: error.message,
+          response: error.response?.data,
+          status: error.response?.status,
+        });
+        setBooks([]);
+        setLoading(false);
+      }
+    };
+
+    fetchBooks();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary-500"></div>
+      </div>
+    );
+  }
 
   return (
-    <div className=" space-y-5">
+    <div className="space-y-5">
+      <ToastContainer />
       <div className="grid grid-cols-12 gap-5">
         <Card className="xl:col-span-3 col-span-12 lg:col-span-5 h-full">
           <div className="grid md:grid-cols-2 grid-cols-1 gap-4">
@@ -207,6 +265,71 @@ const ProjectDetailsPage = () => {
             </ul>
           </Card>
         </div>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        {books && books.length > 0 ? (
+          books.map((book) => (
+            <Card
+              key={book.id}
+              className="hover:shadow-lg transition-shadow duration-300"
+            >
+              <div className="space-y-4">
+                <div className="flex justify-between items-start">
+                  <h2 className="text-xl font-medium text-slate-900 dark:text-slate-300">
+                    {book.name}
+                  </h2>
+                  <span className="text-sm font-medium text-primary-500">
+                    ${book.price}
+                  </span>
+                </div>
+
+                <div className="flex items-center space-x-2 rtl:space-x-reverse">
+                  <span className="text-slate-500 dark:text-slate-400">By</span>
+                  <span className="text-slate-900 dark:text-slate-300 font-medium">
+                    {book.authorName}
+                  </span>
+                </div>
+
+                <div className="text-slate-600 dark:text-slate-400 line-clamp-3">
+                  {book.description}
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <div className="bg-slate-100 dark:bg-slate-700 rounded-full px-3 py-1 text-xs">
+                    {book.genre}
+                  </div>
+                  <div className="bg-slate-100 dark:bg-slate-700 rounded-full px-3 py-1 text-xs">
+                    {book.publishedYear}
+                  </div>
+                  <div className="bg-slate-100 dark:bg-slate-700 rounded-full px-3 py-1 text-xs">
+                    Stock: {book.stock}
+                  </div>
+                </div>
+
+                <div className="flex justify-between items-center pt-4 border-t border-slate-100 dark:border-slate-700">
+                  <div className="flex items-center space-x-2 rtl:space-x-reverse">
+                    <Icon
+                      icon="heroicons-outline:book-open"
+                      className="text-slate-500"
+                    />
+                    <span className="text-sm text-slate-500 dark:text-slate-400">
+                      View Details
+                    </span>
+                  </div>
+                  <button className="text-sm font-medium text-primary-500 hover:text-primary-600">
+                    Add to Cart
+                  </button>
+                </div>
+              </div>
+            </Card>
+          ))
+        ) : (
+          <div className="col-span-full text-center py-10">
+            <h3 className="text-xl font-medium text-slate-900 dark:text-slate-300">
+              No books found
+            </h3>
+          </div>
+        )}
       </div>
     </div>
   );

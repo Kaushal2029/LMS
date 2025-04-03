@@ -36,25 +36,32 @@ const LoginForm = ({ onSuccess, onError }) => {
   const navigate = useNavigate();
   const onSubmit = async (data) => {
     try {
-      // Static credentials
-      const staticEmail = "admin@gmail.com";
-      const staticPassword = "password";
+      // Make an API call to the login endpoint
+      const response = await axios.post(
+        "http://localhost:8000/api/admin/login",
+        {
+          email: data.email,
+          password: data.password,
+        }
+      );
 
-      // Check if the entered credentials match the static ones
-      if (data.email === staticEmail && data.password === staticPassword) {
-        const fakeToken = "static-token"; // Simulate a token
+      // Assuming the API returns a token in the response
+      const { token } = response.data;
 
-        dispatch(setUser(data));
-        navigate("/dashboard");
-        localStorage.setItem("user", JSON.stringify({ email: staticEmail }));
-        localStorage.setItem("token", fakeToken);
-        toast.success("Login Successful");
-        onSuccess(fakeToken);
-      } else {
-        throw new Error("Invalid credentials");
-      }
+      // Dispatch the user data and navigate to the dashboard
+      dispatch(setUser(data));
+      navigate("/dashboard");
+
+      // Store the user email and token in localStorage
+      localStorage.setItem("user", JSON.stringify({ email: data.email }));
+      localStorage.setItem("token", token);
+
+      // Show a success toast
+      toast.success("Login Successful");
+      onSuccess(token);
     } catch (error) {
-      toast.error(error.message);
+      // Handle errors, such as invalid credentials
+      toast.error(error.response?.data?.message || "Login failed");
       onError(error);
     }
   };

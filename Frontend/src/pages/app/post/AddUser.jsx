@@ -1,12 +1,12 @@
 import React, { useState } from "react";
 import { toast } from "react-toastify";
 import { useNavigate } from "react-router-dom";
-import { postData } from "../../../store/api/api";
+import axios from "axios";
 
 function AddUserPage() {
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
-    userName: "",
+    name: "",
     email: "",
     number: "",
     password: "",
@@ -23,8 +23,8 @@ function AddUserPage() {
     let isValid = true;
     const newErrors = {};
 
-    if (!formData.userName.trim()) {
-      newErrors.userName = "Username is required";
+    if (!formData.name.trim()) {
+      newErrors.name = "Name is required";
       isValid = false;
     }
 
@@ -61,13 +61,26 @@ function AddUserPage() {
 
     if (validateForm()) {
       try {
-        const response = await postData("register", formData);
-        console.log("User registered successfully:", response);
-        toast.success(response.message);
+        const token = localStorage.getItem("authToken"); // Get admin token from localStorage
+        const response = await axios.post(
+          "http://localhost:8000/api/admin/users",
+          formData,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+          }
+        );
+        console.log("User registered successfully:", response.data);
+        toast.success(response.data.message || "User created successfully");
         navigate("/users");
       } catch (error) {
         console.error("Error registering user:", error);
-        toast.error(error.message || "An error occurred while registering the user");
+        toast.error(
+          error.response?.data?.message ||
+            "An error occurred while registering the user"
+        );
       }
     }
   };
@@ -77,19 +90,19 @@ function AddUserPage() {
       <form onSubmit={handleSubmit}>
         <div className="cols-12 w-full">
           <div className="mb-5">
-            <label htmlFor="nameInput">Username</label>
+            <label htmlFor="nameInput">Name</label>
             <input
               type="text"
               id="nameInput"
-              name="userName"
-              value={formData.userName}
+              name="name"
+              value={formData.name}
               onChange={handleChange}
               className={`form-control h-10 w-full ${
-                errors.userName ? "border-red-500" : ""
+                errors.name ? "border-red-500" : ""
               }`}
             />
-            {errors.userName && (
-              <p className="text-red-500 text-sm mt-1">{errors.userName}</p>
+            {errors.name && (
+              <p className="text-red-500 text-sm mt-1">{errors.name}</p>
             )}
           </div>
           <div className="mb-5">
