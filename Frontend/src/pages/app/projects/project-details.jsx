@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { useParams } from "react-router-dom";
 import Card from "@/components/ui/Card";
 import Icon from "@/components/ui/Icon";
@@ -12,20 +12,247 @@ import TrackingParcel from "@/components/partials/widget/activity";
 import TeamTable from "@/components/partials/Table/team-table";
 import CalendarView from "@/components/partials/widget/CalendarView";
 import axios from "axios";
-import { ToastContainer } from "react-toastify";
+import { ToastContainer, toast } from "react-toastify";
+import {
+  useTable,
+  useSortBy,
+  useGlobalFilter,
+  usePagination,
+} from "react-table";
+import GlobalFilter from "@/pages/table/react-tables/GlobalFilter";
+import Tooltip from "@/components/ui/Tooltip";
 
 const ProjectDetailsPage = () => {
   const { id } = useParams();
   const [books, setBooks] = useState([]);
+  const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchBooks = async () => {
-      try {
-        const authToken = localStorage.getItem("authToken");
-        console.log("Auth Token:", authToken); // Log the auth token
+  // Function to handle status update
+  const handleStatusUpdate = async (requestId, newStatus) => {
+    try {
+      console.log("Updating status:", { requestId, newStatus });
 
-        const response = await axios.get(
+      const authToken = localStorage.getItem("authToken");
+      const response = await axios.post(
+        "http://localhost:8000/api/admin/book-status",
+        {
+          requestId,
+          status: newStatus,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      console.log("Status update response:", response.data);
+
+      if (response.data) {
+        setRequests((prevRequests) =>
+          prevRequests.map((request) =>
+            request._id === requestId
+              ? {
+                  ...request,
+                  status: newStatus,
+                  ...(newStatus === "returned"
+                    ? { actualReturnDate: new Date().toISOString() }
+                    : {}),
+                }
+              : request
+          )
+        );
+        toast.success(`Book ${newStatus} successfully`);
+      }
+    } catch (error) {
+      console.error(
+        "Error updating status:",
+        error.response?.data || error.message
+      );
+      toast.error("Failed to update book status");
+    }
+  };
+
+  // Function to delete a request
+  const handleDeleteRequest = async (requestId) => {
+    try {
+      console.log("Deleting request:", requestId);
+
+      const authToken = localStorage.getItem("authToken");
+      const response = await axios.delete(
+        `http://localhost:8000/api/admin/requests/${requestId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      console.log("Delete response:", response.data);
+
+      if (response.data) {
+        setRequests((prevRequests) =>
+          prevRequests.filter((request) => request._id !== requestId)
+        );
+        toast.success("Request deleted successfully");
+      }
+    } catch (error) {
+      console.error(
+        "Error deleting request:",
+        error.response?.data || error.message
+      );
+      toast.error("Failed to delete request");
+    }
+  };
+
+  // Function to rebook a rejected book
+  const handleRebook = async (request) => {
+    try {
+      console.log("Rebooking book:", request);
+
+      const authToken = localStorage.getItem("authToken");
+      const response = await axios.post(
+        "http://localhost:8000/api/admin/requests",
+        {
+          bookId: request.bookId._id,
+          userId: request.userId._id,
+          returnDate: new Date(
+            Date.now() + 14 * 24 * 60 * 60 * 1000
+          ).toISOString(), // 14 days from now
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      console.log("Rebook response:", response.data);
+
+      if (response.data) {
+        // Add the new request to the list
+        setRequests((prevRequests) => [...prevRequests, response.data.request]);
+        toast.success("Book rebooked successfully");
+      }
+    } catch (error) {
+      console.error(
+        "Error rebooking book:",
+        error.response?.data || error.message
+      );
+      toast.error("Failed to rebook book");
+    }
+  };
+
+  // Function to fetch requests
+  const fetchRequests = async () => {
+    try {
+      const authToken = localStorage.getItem("authToken");
+      console.log("Fetching requests with token:", authToken);
+
+      // Use the correct endpoint for user book requests
+      const response = await axios.get(
+        "http://localhost:8000/api/admin/carry-books",
+        {
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      console.log("=== User Book Requests API Response ===");
+      console.log("Full Response:", response);
+      console.log("Response Status:", response.status);
+      console.log("Response Headers:", response.headers);
+      console.log("Response Data Type:", typeof response.data);
+      console.log("Response Data:", response.data);
+
+      // Extract the requests data
+      let requestsData = [];
+
+      if (response.data) {
+        // Check if the response has a carries property
+        if (response.data.carries && Array.isArray(response.data.carries)) {
+          requestsData = response.data.carries;
+          console.log("Using response.data.carries array");
+        }
+        // If the response is an array, use it directly
+        else if (Array.isArray(response.data)) {
+          requestsData = response.data;
+          console.log("Using response.data as array");
+        }
+        // If it's an object with a data property that's an array
+        else if (response.data.data && Array.isArray(response.data.data)) {
+          requestsData = response.data.data;
+          console.log("Using response.data.data array");
+        }
+        // If it's an object, try to convert it to an array
+        else if (typeof response.data === "object") {
+          // Try to find any array property
+          const arrayProps = Object.entries(response.data)
+            .filter(([key, value]) => Array.isArray(value))
+            .map(([key, value]) => ({ key, value }));
+
+          if (arrayProps.length > 0) {
+            console.log(
+              "Found array properties:",
+              arrayProps.map((p) => p.key)
+            );
+            // Use the first array property found
+            requestsData = arrayProps[0].value;
+            console.log(`Using response.data.${arrayProps[0].key} array`);
+          } else {
+            // If no array property found, convert the object to an array
+            requestsData = [response.data];
+            console.log("Converting response.data object to array");
+          }
+        }
+      }
+
+      console.log("=== Processed Requests Data ===");
+      console.log("Total Requests:", requestsData.length);
+      console.log("Requests Data:", requestsData);
+
+      // Log the first request to see its structure
+      if (requestsData.length > 0) {
+        console.log("=== First Request Structure ===");
+        console.log("Request ID:", requestsData[0]._id);
+        console.log("Book Details:", requestsData[0].bookId);
+        console.log("User Details:", requestsData[0].userId);
+        console.log("Status:", requestsData[0].status);
+        console.log("Dates:", {
+          createdAt: requestsData[0].createdAt,
+          issueDate: requestsData[0].issueDate,
+          returnDate: requestsData[0].returnDate,
+        });
+      } else {
+        console.log("No requests found in the response");
+      }
+
+      setRequests(requestsData);
+    } catch (error) {
+      console.error("=== Error Fetching Requests ===");
+      console.error("Error:", error);
+      console.error("Error Response:", error.response);
+      console.error("Error Message:", error.message);
+      console.error("Error Data:", error.response?.data);
+      setRequests([]);
+      toast.error("Failed to fetch book requests");
+    }
+  };
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const authToken = localStorage.getItem("authToken");
+
+        // Fetch books
+        const booksResponse = await axios.get(
           "http://localhost:8000/api/admin/books",
           {
             headers: {
@@ -35,33 +262,428 @@ const ProjectDetailsPage = () => {
           }
         );
 
-        console.log("Full Response:", response); // Log the full response
-        console.log("Response Data:", response.data); // Log the response data
+        console.log("Books response:", booksResponse.data);
 
-        // Handle the response structure where books are under a 'books' property
-        if (response.data && response.data.books) {
-          setBooks(response.data.books);
-        } else if (Array.isArray(response.data)) {
-          setBooks(response.data);
-        } else {
-          console.error("Unexpected response structure:", response.data);
-          setBooks([]);
+        if (booksResponse.data && booksResponse.data.books) {
+          setBooks(booksResponse.data.books);
+        } else if (Array.isArray(booksResponse.data)) {
+          setBooks(booksResponse.data);
         }
+
+        // Fetch requests
+        await fetchRequests();
 
         setLoading(false);
       } catch (error) {
-        console.error("Error details:", {
-          message: error.message,
-          response: error.response?.data,
-          status: error.response?.status,
-        });
-        setBooks([]);
+        console.error(
+          "Error fetching data:",
+          error.response?.data || error.message
+        );
         setLoading(false);
       }
     };
 
-    fetchBooks();
+    fetchData();
   }, []);
+
+  // Add a refresh function to manually refresh the data
+  const refreshData = async () => {
+    try {
+      setLoading(true);
+      await fetchRequests();
+      setLoading(false);
+      toast.success("Data refreshed successfully");
+    } catch (error) {
+      console.error("Error refreshing data:", error);
+      setLoading(false);
+      toast.error("Failed to refresh data");
+    }
+  };
+
+  const columns = useMemo(
+    () => [
+      {
+        Header: "ID",
+        accessor: "id",
+        Cell: ({ row }) => {
+          return <span>{row?.index + 1}</span>;
+        },
+      },
+      {
+        Header: "Book Name",
+        accessor: "name",
+      },
+      {
+        Header: "Author",
+        accessor: "authorName",
+      },
+      {
+        Header: "Genre",
+        accessor: "genre",
+      },
+      {
+        Header: "Price",
+        accessor: "price",
+        Cell: ({ value }) => `$${value}`,
+      },
+      {
+        Header: "Stock",
+        accessor: "stock",
+      },
+      {
+        Header: "Actions",
+        accessor: "actions",
+        Cell: ({ row }) => {
+          const handleView = () => {
+            // Implement view functionality
+            console.log("View book:", row.original);
+          };
+
+          const handleEdit = () => {
+            // Implement edit functionality
+            console.log("Edit book:", row.original);
+          };
+
+          const handleDelete = async () => {
+            try {
+              const authToken = localStorage.getItem("authToken");
+              await axios.delete(
+                `http://localhost:8000/api/admin/books/${row.original._id}`,
+                {
+                  headers: {
+                    Authorization: `Bearer ${authToken}`,
+                  },
+                }
+              );
+              setBooks((prevBooks) =>
+                prevBooks.filter((book) => book._id !== row.original._id)
+              );
+            } catch (error) {
+              console.error("Error deleting book:", error);
+            }
+          };
+
+          return (
+            <div className="flex space-x-3 rtl:space-x-reverse">
+              <Tooltip
+                content="View"
+                placement="top"
+                arrow
+                animation="shift-away"
+              >
+                <button
+                  className="action-btn"
+                  type="button"
+                  onClick={handleView}
+                >
+                  <Icon icon="heroicons:eye" />
+                </button>
+              </Tooltip>
+              <Tooltip
+                content="Edit"
+                placement="top"
+                arrow
+                animation="shift-away"
+              >
+                <button
+                  className="action-btn"
+                  type="button"
+                  onClick={handleEdit}
+                >
+                  <Icon icon="heroicons:pencil-square" />
+                </button>
+              </Tooltip>
+              <Tooltip
+                content="Delete"
+                placement="top"
+                arrow
+                animation="shift-away"
+                theme="danger"
+              >
+                <button
+                  className="action-btn"
+                  type="button"
+                  onClick={handleDelete}
+                >
+                  <Icon icon="heroicons:trash" />
+                </button>
+              </Tooltip>
+            </div>
+          );
+        },
+      },
+    ],
+    []
+  );
+
+  const tableInstance = useTable(
+    {
+      columns,
+      data: books,
+    },
+    useGlobalFilter,
+    useSortBy,
+    usePagination
+  );
+
+  const {
+    getTableProps,
+    getTableBodyProps,
+    headerGroups,
+    page,
+    nextPage,
+    previousPage,
+    canNextPage,
+    canPreviousPage,
+    pageOptions,
+    state,
+    gotoPage,
+    pageCount,
+    setPageSize,
+    setGlobalFilter,
+    prepareRow,
+  } = tableInstance;
+
+  const { globalFilter, pageIndex, pageSize } = state;
+
+  const requestColumns = useMemo(
+    () => [
+      {
+        Header: "ID",
+        accessor: "id",
+        Cell: ({ row }) => {
+          return <span>{row?.index + 1}</span>;
+        },
+      },
+      {
+        Header: "Request By",
+        accessor: "userId.name",
+        Cell: ({ value }) => {
+          return <span className="font-mono text-xs">{value}</span>;
+        },
+      },
+      {
+        Header: "Book Name",
+        accessor: "bookId.name",
+      },
+      {
+        Header: "Request Date",
+        accessor: "requestDate",
+        Cell: ({ value }) => {
+          return value ? new Date(value).toLocaleDateString() : "N/A";
+        },
+      },
+      {
+        Header: "Expected Return Date",
+        accessor: "returnDate",
+        Cell: ({ value }) => {
+          return value ? new Date(value).toLocaleDateString() : "N/A";
+        },
+      },
+      {
+        Header: "Actual Return Date",
+        accessor: "actualReturnDate",
+        Cell: ({ row }) => {
+          const request = row.original;
+          if (request.status === "returned" && request.actualReturnDate) {
+            return new Date(request.actualReturnDate).toLocaleDateString();
+          } else if (request.status === "returned") {
+            return new Date().toLocaleDateString(); // Current date if no actual return date
+          }
+          return "N/A";
+        },
+      },
+      {
+        Header: "Status",
+        accessor: "status",
+        Cell: ({ value }) => {
+          const statusColors = {
+            pending: "bg-warning-500",
+            issued: "bg-success-500",
+            returned: "bg-info-500",
+            rejected: "bg-danger-500",
+          };
+
+          return (
+            <span
+              className={`px-2 py-1 rounded-full text-xs text-white ${
+                statusColors[value] || "bg-slate-500"
+              }`}
+            >
+              {value}
+            </span>
+          );
+        },
+      },
+      {
+        Header: "Actions",
+        accessor: "actions",
+        Cell: ({ row }) => {
+          const request = row.original;
+          const isPending = request.status === "pending";
+          const isIssued = request.status === "issued";
+          const isRejected = request.status === "rejected";
+
+          return (
+            <div className="flex space-x-3 rtl:space-x-reverse">
+              {isPending && (
+                <>
+                  <Tooltip
+                    content="Issue Book"
+                    placement="top"
+                    arrow
+                    animation="shift-away"
+                  >
+                    <button
+                      className="action-btn"
+                      type="button"
+                      onClick={() => {
+                        console.log("Issuing book:", request._id);
+                        handleStatusUpdate(request._id, "issued");
+                      }}
+                    >
+                      <Icon icon="heroicons:check-circle" />
+                    </button>
+                  </Tooltip>
+                  <Tooltip
+                    content="Reject Request"
+                    placement="top"
+                    arrow
+                    animation="shift-away"
+                    theme="danger"
+                  >
+                    <button
+                      className="action-btn"
+                      type="button"
+                      onClick={() => {
+                        console.log("Rejecting request:", request._id);
+                        handleStatusUpdate(request._id, "rejected");
+                      }}
+                    >
+                      <Icon icon="heroicons:x-circle" />
+                    </button>
+                  </Tooltip>
+                </>
+              )}
+              {isIssued && (
+                <Tooltip
+                  content="Mark as Returned"
+                  placement="top"
+                  arrow
+                  animation="shift-away"
+                >
+                  <button
+                    className="action-btn"
+                    type="button"
+                    onClick={() => {
+                      console.log("Marking as returned:", request._id);
+                      handleStatusUpdate(request._id, "returned");
+                    }}
+                  >
+                    <Icon icon="heroicons:arrow-path" />
+                  </button>
+                </Tooltip>
+              )}
+              {isRejected && (
+                <>
+                  <Tooltip
+                    content="Rebook"
+                    placement="top"
+                    arrow
+                    animation="shift-away"
+                  >
+                    <button
+                      className="action-btn"
+                      type="button"
+                      onClick={() => {
+                        console.log("Rebooking:", request);
+                        handleRebook(request);
+                      }}
+                    >
+                      <Icon icon="heroicons:arrow-path-rounded-square" />
+                    </button>
+                  </Tooltip>
+                  <Tooltip
+                    content="Delete Request"
+                    placement="top"
+                    arrow
+                    animation="shift-away"
+                    theme="danger"
+                  >
+                    <button
+                      className="action-btn"
+                      type="button"
+                      onClick={() => {
+                        console.log("Deleting request:", request._id);
+                        handleDeleteRequest(request._id);
+                      }}
+                    >
+                      <Icon icon="heroicons:trash" />
+                    </button>
+                  </Tooltip>
+                </>
+              )}
+              {!isPending && !isIssued && !isRejected && (
+                <Tooltip
+                  content="Delete Request"
+                  placement="top"
+                  arrow
+                  animation="shift-away"
+                  theme="danger"
+                >
+                  <button
+                    className="action-btn"
+                    type="button"
+                    onClick={() => {
+                      console.log("Deleting request:", request._id);
+                      handleDeleteRequest(request._id);
+                    }}
+                  >
+                    <Icon icon="heroicons:trash" />
+                  </button>
+                </Tooltip>
+              )}
+            </div>
+          );
+        },
+      },
+    ],
+    []
+  );
+
+  const requestTableInstance = useTable(
+    {
+      columns: requestColumns,
+      data: requests,
+    },
+    useGlobalFilter,
+    useSortBy,
+    usePagination
+  );
+
+  const {
+    getTableProps: getRequestTableProps,
+    getTableBodyProps: getRequestTableBodyProps,
+    headerGroups: requestHeaderGroups,
+    page: requestPage,
+    nextPage: nextRequestPage,
+    previousPage: previousRequestPage,
+    canNextPage: canNextRequestPage,
+    canPreviousPage: canPreviousRequestPage,
+    pageOptions: requestPageOptions,
+    state: requestState,
+    gotoPage: gotoRequestPage,
+    pageCount: requestPageCount,
+    setPageSize: setRequestPageSize,
+    setGlobalFilter: setRequestGlobalFilter,
+    prepareRow: prepareRequestRow,
+  } = requestTableInstance;
+
+  const {
+    globalFilter: requestGlobalFilter,
+    pageIndex: requestPageIndex,
+    pageSize: requestPageSize,
+  } = requestState;
 
   if (loading) {
     return (
@@ -74,263 +696,307 @@ const ProjectDetailsPage = () => {
   return (
     <div className="space-y-5">
       <ToastContainer />
-      <div className="grid grid-cols-12 gap-5">
-        <Card className="xl:col-span-3 col-span-12 lg:col-span-5 h-full">
-          <div className="grid md:grid-cols-2 grid-cols-1 gap-4">
-            <GroupChart4 />
-          </div>
-          <div className="bg-slate-50 dark:bg-slate-900 rounded-md p-4 mt-4">
-            <span className="block dark:text-slate-400 text-sm text-slate-600">
-              Progress
-            </span>
-            <DonutChart />
-          </div>
-        </Card>
-        {/* end single column*/}
-        <Card
-          title="About project"
-          className="xl:col-span-5 col-span-12 lg:col-span-7 h-full"
-        >
+
+      {/* Books Table */}
+      <Card title="Books Management">
+        <div className="md:flex justify-between items-center mb-6">
+          <h4 className="card-title">Books List</h4>
           <div>
-            <div className="text-base font-medium text-slate-800 dark:text-slate-100 mb-3">
-              Background information
-            </div>
-            <p className="text-sm text-slate-600 dark:text-slate-300">
-              The Optimistic Website Company - Amet minim mollit non deserunt
-              ullamco est sit aliqua dolor do amet sint. Velit officia consequat
-              duis enim velit mollit. Exercita -tion veniam consequat sunt
-              nostrud amet.
-            </p>
-            <br />
-            <p className="text-sm text-slate-600 dark:text-slate-300">
-              Amet minim mollit non deserunt ullamco est sit aliqua dolor do
-              amet sint.The Optimistic Website Company - Amet minim mollit non
-              deserunt ullamco est sit aliqua dolor do amet sint. Velit officia
-              consequat duis enim velit mollit. Exercita -tion veniam consequat
-              sunt nostrud amet.
-            </p>
-            <div className="flex flex-wrap mt-8">
-              <div className="xl:mr-8 mr-4 mb-3 space-y-1">
-                <div className="font-semibold text-slate-500 dark:text-slate-400">
-                  Existing website
-                </div>
-                <div className="flex items-center space-x-2 text-xs font-normal text-primary-600 dark:text-slate-300 rtl:space-x-reverse">
-                  <Icon icon="heroicons:link" />
-                  <a href="#">www.example.com</a>
-                </div>
-              </div>
-              <div className="xl:mr-8 mr-4 mb-3 space-y-1">
-                <div className="font-semibold text-slate-500 dark:text-slate-400">
-                  Project brief
-                </div>
-                <div className="flex items-center space-x-2 text-xs font-normal text-primary-600 dark:text-slate-300 rtl:space-x-reverse">
-                  <Icon icon="heroicons:link" />
-                  <a href="#">www.example.com</a>
-                </div>
-              </div>
-            </div>
-            {/* end flex */}
-            <div className="bg-slate-100 dark:bg-slate-700 rounded px-4 pt-4 pb-1 flex flex-wrap justify-between mt-6">
-              <div className="mr-3 mb-3 space-y-2">
-                <div className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                  Project owner
-                </div>
-                <div className="text-xs text-slate-600 dark:text-slate-300">
-                  John Doe
-                </div>
-              </div>
-              {/* end single */}
-              <div className="mr-3 mb-3 space-y-2">
-                <div className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                  Budget
-                </div>
-                <div className="text-xs text-slate-600 dark:text-slate-300">
-                  $75,800
-                </div>
-              </div>
-              {/* end single */}
-              <div className="mr-3 mb-3 space-y-2">
-                <div className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                  Start date
-                </div>
-                <div className="text-xs text-slate-600 dark:text-slate-300">
-                  01/11/2021
-                </div>
-              </div>
-              {/* end single */}
-              <div className="mr-3 mb-3 space-y-2">
-                <div className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                  Deadline
-                </div>
-                <div className="text-xs text-warning-500">01/11/2021</div>
-              </div>
-              {/* end single */}
+            <GlobalFilter filter={globalFilter} setFilter={setGlobalFilter} />
+          </div>
+        </div>
+        <div className="overflow-x-auto -mx-6">
+          <div className="inline-block min-w-full align-middle">
+            <div className="overflow-hidden">
+              <table
+                className="min-w-full divide-y divide-slate-100 table-fixed dark:divide-slate-700"
+                {...getTableProps()}
+              >
+                <thead className="bg-slate-200 dark:bg-slate-700">
+                  {headerGroups.map((headerGroup) => (
+                    <tr {...headerGroup.getHeaderGroupProps()}>
+                      {headerGroup.headers.map((column) => (
+                        <th
+                          {...column.getHeaderProps(
+                            column.getSortByToggleProps()
+                          )}
+                          scope="col"
+                          className="table-th"
+                        >
+                          {column.render("Header")}
+                          <span>
+                            {column.isSorted
+                              ? column.isSortedDesc
+                                ? " 🔽"
+                                : " 🔼"
+                              : ""}
+                          </span>
+                        </th>
+                      ))}
+                    </tr>
+                  ))}
+                </thead>
+                <tbody
+                  className="bg-white divide-y divide-slate-100 dark:bg-slate-800 dark:divide-slate-700"
+                  {...getTableBodyProps()}
+                >
+                  {page.map((row) => {
+                    prepareRow(row);
+                    return (
+                      <tr {...row.getRowProps()}>
+                        {row.cells.map((cell) => {
+                          return (
+                            <td {...cell.getCellProps()} className="table-td">
+                              {cell.render("Cell")}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
-        </Card>
-        <Card title="Notes" className="xl:col-span-4 col-span-12">
-          <div className="-mx-6 custom-calender mb-6">
-            <CalendarView />
+        </div>
+        <div className="md:flex md:space-y-0 space-y-5 justify-between mt-6 items-center">
+          <div className="flex items-center space-x-3 rtl:space-x-reverse">
+            <select
+              className="form-control py-2 w-max"
+              value={pageSize}
+              onChange={(e) => setPageSize(Number(e.target.value))}
+            >
+              {[10, 25, 50].map((pageSize) => (
+                <option key={pageSize} value={pageSize}>
+                  Show {pageSize}
+                </option>
+              ))}
+            </select>
+            <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
+              Page{" "}
+              <span>
+                {pageIndex + 1} of {pageOptions.length}
+              </span>
+            </span>
           </div>
-          <ul className="divide-y divide-slate-100 dark:divide-slate-700">
-            {meets.slice(0, 3).map((item, i) => (
-              <li key={i} className="block py-[10px]">
-                <div className="flex space-x-2 rtl:space-x-reverse">
-                  <div className="flex-1 flex space-x-2 rtl:space-x-reverse">
-                    <div className="flex-none">
-                      <div className="h-8 w-8">
-                        <img
-                          src={item.img}
-                          alt=""
-                          className="block w-full h-full object-cover rounded-full border hover:border-white border-transparent"
-                        />
-                      </div>
-                    </div>
-                    <div className="flex-1">
-                      <span className="block text-slate-600 text-sm dark:text-slate-300 mb-1 font-medium">
-                        {item.title}
-                      </span>
-                      <span className="flex font-normal text-xs dark:text-slate-400 text-slate-500">
-                        <span className="text-base inline-block mr-1">
-                          <Icon icon="heroicons-outline:video-camera" />
-                        </span>
-                        {item.meet}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex-none">
-                    <span className="block text-xs text-slate-600 dark:text-slate-400">
-                      {item.date}
-                    </span>
-                  </div>
-                </div>
+          <ul className="flex items-center space-x-3 rtl:space-x-reverse">
+            <li className="text-xl leading-4 text-slate-900 dark:text-white rtl:rotate-180">
+              <button
+                className={`${
+                  !canPreviousPage ? "opacity-50 cursor-not-allowed" : ""
+                }`}
+                onClick={() => gotoPage(0)}
+                disabled={!canPreviousPage}
+              >
+                <Icon icon="heroicons:chevron-double-left-solid" />
+              </button>
+            </li>
+            <li className="text-sm leading-4 text-slate-900 dark:text-white rtl:rotate-180">
+              <button
+                className={`${
+                  !canPreviousPage ? "opacity-50 cursor-not-allowed" : ""
+                }`}
+                onClick={() => previousPage()}
+                disabled={!canPreviousPage}
+              >
+                Prev
+              </button>
+            </li>
+            {pageOptions.map((page, pageIdx) => (
+              <li key={pageIdx}>
+                <button
+                  className={`${
+                    pageIdx === pageIndex
+                      ? "bg-slate-900 dark:bg-slate-600 dark:text-slate-200 text-white font-medium"
+                      : "bg-slate-100 dark:bg-slate-700 dark:text-slate-400 text-slate-900 font-normal"
+                  } text-sm rounded leading-[16px] flex h-6 w-6 items-center justify-center transition-all duration-150`}
+                  onClick={() => gotoPage(pageIdx)}
+                >
+                  {page + 1}
+                </button>
               </li>
             ))}
+            <li className="text-sm leading-4 text-slate-900 dark:text-white rtl:rotate-180">
+              <button
+                className={`${
+                  !canNextPage ? "opacity-50 cursor-not-allowed" : ""
+                }`}
+                onClick={() => nextPage()}
+                disabled={!canNextPage}
+              >
+                Next
+              </button>
+            </li>
+            <li className="text-xl leading-4 text-slate-900 dark:text-white rtl:rotate-180">
+              <button
+                onClick={() => gotoPage(pageCount - 1)}
+                disabled={!canNextPage}
+                className={`${
+                  !canNextPage ? "opacity-50 cursor-not-allowed" : ""
+                }`}
+              >
+                <Icon icon="heroicons:chevron-double-right-solid" />
+              </button>
+            </li>
           </ul>
-        </Card>
-      </div>
-      <div className="grid xl:grid-cols-3 grid-cols-1 gap-5">
-        <Card title="Task list" headerslot={<SelectMonth />}>
-          <TaskLists />
-        </Card>
-        <Card title="Messages" headerslot={<SelectMonth />}>
-          <MessageList />
-        </Card>
-        <Card title="Activity" headerslot={<SelectMonth />}>
-          <TrackingParcel />
-        </Card>
-      </div>
-      <div className="grid grid-cols-12 gap-5">
-        <div className="xl:col-span-8 lg:col-span-7 col-span-12">
-          <Card title="Team members" noborder>
-            <TeamTable />
-          </Card>
         </div>
-        <div className="xl:col-span-4 lg:col-span-5 col-span-12">
-          <Card title="Files" headerslot={<SelectMonth />}>
-            <ul className="divide-y divide-slate-100 dark:divide-slate-700">
-              {files.map((item, i) => (
-                <li key={i} className="block py-[8px]">
-                  <div className="flex space-x-2 rtl:space-x-reverse">
-                    <div className="flex-1 flex space-x-2 rtl:space-x-reverse">
-                      <div className="flex-none">
-                        <div className="h-8 w-8">
-                          <img
-                            src={item.img}
-                            alt=""
-                            className="block w-full h-full object-cover rounded-full border hover:border-white border-transparent"
-                          />
-                        </div>
-                      </div>
-                      <div className="flex-1">
-                        <span className="block text-slate-600 text-sm dark:text-slate-300">
-                          {item.title}
-                        </span>
-                        <span className="block font-normal text-xs text-slate-500 mt-1">
-                          {item.date}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex-none">
-                      <button
-                        type="button"
-                        className="text-xs text-slate-900 dark:text-white"
-                      >
-                        Download
-                      </button>
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </Card>
-        </div>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {books && books.length > 0 ? (
-          books.map((book) => (
-            <Card
-              key={book.id}
-              className="hover:shadow-lg transition-shadow duration-300"
+      </Card>
+
+      {/* Book Requests Table */}
+      <Card title="Book Requests Management">
+        <div className="md:flex justify-between items-center mb-6">
+          <h4 className="card-title">Book Requests List</h4>
+          <div className="flex items-center space-x-3">
+            <button
+              className="btn btn-sm btn-primary"
+              onClick={refreshData}
+              disabled={loading}
             >
-              <div className="space-y-4">
-                <div className="flex justify-between items-start">
-                  <h2 className="text-xl font-medium text-slate-900 dark:text-slate-300">
-                    {book.name}
-                  </h2>
-                  <span className="text-sm font-medium text-primary-500">
-                    ${book.price}
-                  </span>
-                </div>
-
-                <div className="flex items-center space-x-2 rtl:space-x-reverse">
-                  <span className="text-slate-500 dark:text-slate-400">By</span>
-                  <span className="text-slate-900 dark:text-slate-300 font-medium">
-                    {book.authorName}
-                  </span>
-                </div>
-
-                <div className="text-slate-600 dark:text-slate-400 line-clamp-3">
-                  {book.description}
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  <div className="bg-slate-100 dark:bg-slate-700 rounded-full px-3 py-1 text-xs">
-                    {book.genre}
-                  </div>
-                  <div className="bg-slate-100 dark:bg-slate-700 rounded-full px-3 py-1 text-xs">
-                    {book.publishedYear}
-                  </div>
-                  <div className="bg-slate-100 dark:bg-slate-700 rounded-full px-3 py-1 text-xs">
-                    Stock: {book.stock}
-                  </div>
-                </div>
-
-                <div className="flex justify-between items-center pt-4 border-t border-slate-100 dark:border-slate-700">
-                  <div className="flex items-center space-x-2 rtl:space-x-reverse">
-                    <Icon
-                      icon="heroicons-outline:book-open"
-                      className="text-slate-500"
-                    />
-                    <span className="text-sm text-slate-500 dark:text-slate-400">
-                      View Details
-                    </span>
-                  </div>
-                  <button className="text-sm font-medium text-primary-500 hover:text-primary-600">
-                    Add to Cart
-                  </button>
-                </div>
-              </div>
-            </Card>
-          ))
-        ) : (
-          <div className="col-span-full text-center py-10">
-            <h3 className="text-xl font-medium text-slate-900 dark:text-slate-300">
-              No books found
-            </h3>
+              <Icon icon="heroicons:arrow-path" className="w-4 h-4 mr-1" />
+              Refresh
+            </button>
+            <GlobalFilter
+              filter={requestGlobalFilter}
+              setFilter={setRequestGlobalFilter}
+            />
           </div>
-        )}
-      </div>
+        </div>
+        <div className="overflow-x-auto -mx-6">
+          <div className="inline-block min-w-full align-middle">
+            <div className="overflow-hidden">
+              <table
+                className="min-w-full divide-y divide-slate-100 table-fixed dark:divide-slate-700"
+                {...getRequestTableProps()}
+              >
+                <thead className="bg-slate-200 dark:bg-slate-700">
+                  {requestHeaderGroups.map((headerGroup) => (
+                    <tr {...headerGroup.getHeaderGroupProps()}>
+                      {headerGroup.headers.map((column) => (
+                        <th
+                          {...column.getHeaderProps(
+                            column.getSortByToggleProps()
+                          )}
+                          scope="col"
+                          className="table-th"
+                        >
+                          {column.render("Header")}
+                          <span>
+                            {column.isSorted
+                              ? column.isSortedDesc
+                                ? " 🔽"
+                                : " 🔼"
+                              : ""}
+                          </span>
+                        </th>
+                      ))}
+                    </tr>
+                  ))}
+                </thead>
+                <tbody
+                  className="bg-white divide-y divide-slate-100 dark:bg-slate-800 dark:divide-slate-700"
+                  {...getRequestTableBodyProps()}
+                >
+                  {requestPage.map((row) => {
+                    prepareRequestRow(row);
+                    return (
+                      <tr {...row.getRowProps()}>
+                        {row.cells.map((cell) => {
+                          return (
+                            <td {...cell.getCellProps()} className="table-td">
+                              {cell.render("Cell")}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div className="md:flex md:space-y-0 space-y-5 justify-between mt-6 items-center">
+          <div className="flex items-center space-x-3 rtl:space-x-reverse">
+            <select
+              className="form-control py-2 w-max"
+              value={requestPageSize}
+              onChange={(e) => setRequestPageSize(Number(e.target.value))}
+            >
+              {[10, 25, 50].map((pageSize) => (
+                <option key={pageSize} value={pageSize}>
+                  Show {pageSize}
+                </option>
+              ))}
+            </select>
+            <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
+              Page{" "}
+              <span>
+                {requestPageIndex + 1} of {requestPageOptions.length}
+              </span>
+            </span>
+          </div>
+          <ul className="flex items-center space-x-3 rtl:space-x-reverse">
+            <li className="text-xl leading-4 text-slate-900 dark:text-white rtl:rotate-180">
+              <button
+                className={`${
+                  !canPreviousRequestPage ? "opacity-50 cursor-not-allowed" : ""
+                }`}
+                onClick={() => gotoRequestPage(0)}
+                disabled={!canPreviousRequestPage}
+              >
+                <Icon icon="heroicons:chevron-double-left-solid" />
+              </button>
+            </li>
+            <li className="text-sm leading-4 text-slate-900 dark:text-white rtl:rotate-180">
+              <button
+                className={`${
+                  !canPreviousRequestPage ? "opacity-50 cursor-not-allowed" : ""
+                }`}
+                onClick={() => previousRequestPage()}
+                disabled={!canPreviousRequestPage}
+              >
+                Prev
+              </button>
+            </li>
+            {requestPageOptions.map((page, pageIdx) => (
+              <li key={pageIdx}>
+                <button
+                  className={`${
+                    pageIdx === requestPageIndex
+                      ? "bg-slate-900 dark:bg-slate-600 dark:text-slate-200 text-white font-medium"
+                      : "bg-slate-100 dark:bg-slate-700 dark:text-slate-400 text-slate-900 font-normal"
+                  } text-sm rounded leading-[16px] flex h-6 w-6 items-center justify-center transition-all duration-150`}
+                  onClick={() => gotoRequestPage(pageIdx)}
+                >
+                  {page + 1}
+                </button>
+              </li>
+            ))}
+            <li className="text-sm leading-4 text-slate-900 dark:text-white rtl:rotate-180">
+              <button
+                className={`${
+                  !canNextRequestPage ? "opacity-50 cursor-not-allowed" : ""
+                }`}
+                onClick={() => nextRequestPage()}
+                disabled={!canNextRequestPage}
+              >
+                Next
+              </button>
+            </li>
+            <li className="text-xl leading-4 text-slate-900 dark:text-white rtl:rotate-180">
+              <button
+                onClick={() => gotoRequestPage(requestPageCount - 1)}
+                disabled={!canNextRequestPage}
+                className={`${
+                  !canNextRequestPage ? "opacity-50 cursor-not-allowed" : ""
+                }`}
+              >
+                <Icon icon="heroicons:chevron-double-right-solid" />
+              </button>
+            </li>
+          </ul>
+        </div>
+      </Card>
     </div>
   );
 };
